@@ -1,0 +1,224 @@
+<?php
+/**
+ * 
+ * 部门信息处理模块，内容使用，使用缓存
+ * @author kk
+ * @since 2017-09-06
+ *
+ */
+class AppDepartment {
+	public static $departmentList_key		=	'AppDepartment_DepartmentList' ;//部门项目列表信息缓存前缀
+	public static $departmentTableName    	=   'app_department';
+	/**
+	 * 清空部门缓存信息
+	 */
+	public static function clearDepartmentMemcache( $params =array() )
+	{
+		do{
+			$canmcArr	=	array(
+					self::$departmentList_key .'0',
+					self::$departmentList_key .'1',
+					self::$departmentList_key .'all'
+			);
+			foreach( $canmcArr as $key =>$val){
+				CfgAR::delMc( array( 'link'=>'memcache' , 'key'=>$val ) );
+			}
+		}while(0);
+	}
+	/**
+	 * 获取对应的部门列表
+	 */
+	public static function getDepartmentList( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_AppDepartment_getDepartmentList' );
+		do{
+			$status	=	isset( $params['status'] ) ? $params['status'] : 0;
+			$canmc	=	isset( $params['canmc'] ) ? $params['canmc'] : true;
+			$mc_key	=	self::$departmentList_key . $status;
+			if( $canmc ){
+				$resData			=	CfgAR::getMc( array( 'link'=>'memcache' , 'key'=>$mc_key ) );
+				if( $resData ){
+					$ret_array['ret']	=	0;
+					$ret_array['data']	=	$resData;
+					break;
+				}
+			}
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$where		=	' where id<>0  ';
+			if( 'all'!= (string)( $status ) ){
+				$where	.=	'and status=:status';
+			}
+			$sql		=	"select id,uid,department_name,department_des,pic,status from ".self::$departmentTableName." {$where}";
+			$command	=	$connection->createCommand($sql);
+			if( 'all'!= (string)( $status ) ){
+				$command->bindParam(":status", $status, PDO::PARAM_INT);
+			}
+			$resDate	=	$command->queryAll();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+			if( !empty($resDate) ){
+				CfgAR::setMc( array( 'link'=>'memcache' ,'key'=>$mc_key ,'data'=>$resDate ) );
+			}
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_AppDepartment_getDepartmentList.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 新增部门信息
+	 */
+	public static function addDepartmentInfo( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_AppDepartment_addDepartmentInfo' );
+		do{
+			$uid				=	isset( $params['uid'] ) ? $params['uid'] : '';
+			$department_name	=	isset( $params['department_name'] ) ? $params['department_name'] : '';
+			$pic				=	isset( $params['pic'] ) ? $params['pic'] : '';
+			$department_des		=	isset( $params['department_des'] ) ? $params['department_des'] : '';
+			$status				=	0;
+			$create_time		=	date( 'Y-m-d H:i:s' );
+			$lasttime			=	date( 'Y-m-d H:i:s' );
+			$remark				=	date( 'Y-m-d H:i:s' ).'新增记录';
+			if( empty( $department_name ) || empty( $department_des ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'新增'.APP_DEPARTMENT_NAME.'失败！必要参数缺失';
+				break;
+			}
+			//检查名字是否已经存在了
+			$resData			=	AppDepartment::checkDepartmentName( $params );
+			if( 0!=$resData['ret'] ){
+				$ret_array		=	$resData;
+				break;
+			}
+			if( count( $resData['data'] ) >0 ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'新增'.APP_DEPARTMENT_NAME.'失败！'.APP_DEPARTMENT_NAME.'已经存在了';
+				break;
+			}
+			$connection					=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"INSERT INTO ". self::$departmentTableName ." (uid,department_name,department_des,pic,status,create_time,lasttime,remark) VALUES(:uid,:department_name,:department_des,:pic,:status,:create_time,:lasttime,:remark)";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":uid", $uid , PDO::PARAM_INT);
+			$command->bindParam(":department_name", $department_name , PDO::PARAM_STR);
+			$command->bindParam(":department_des", $department_des , PDO::PARAM_STR);
+			$command->bindParam(":pic", $pic , PDO::PARAM_STR);
+			$command->bindParam(":status", $status , PDO::PARAM_STR);
+			$command->bindParam(":create_time", $create_time , PDO::PARAM_STR);
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate )
+			{
+				$ret_array['ret']		=	0;
+				$ret_array['data']		=	$connection->getLastInsertID();
+				AppDepartment::clearDepartmentMemcache();
+				break;
+			}
+			$ret_array['ret']			=	4;
+			$ret_array['msg']			=	'新增'.APP_DEPARTMENT_NAME.'失败！记录数据失败！';
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_AppDepartment_addDepartmentInfo.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 修改对应的部门信息
+	 * 
+	 */
+	public static function updateDepartmentInfo( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_AppDepartment_updateDepartmentInfo' );
+		do{
+			$department_id		=	isset( $params['department_id'] ) ? $params['department_id'] : '';
+			$remark				=	isset( $params['remark'] ) ? $params['remark'] : '|'.date('Y-m-d H:i:s') .'修改内容';
+			$lasttime			=	date( 'Y-m-d H:i:s' );
+			if( empty( $department_id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'修改'.APP_DEPARTMENT_NAME.'失败！必要参数缺失';
+				break;
+			}
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	2;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	'UPDATE ' . self::$departmentTableName . ' SET ';
+			foreach( $params as $key =>$val ){
+				if( 'department_id'!=$key && 'remark'!=$key ){
+					$sql	.=	" {$key}=:{$key},";
+				}
+			}
+			$sql		.=	" lasttime=:lasttime,remark=CONCAT(remark,:remark)";
+			$sql		.=	' WHERE id=:id';
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $department_id , PDO::PARAM_INT);
+			foreach( $params as $key =>$val ){
+				if( 'department_id'!=$key && 'remark'!=$key ){
+					$command->bindParam(":{$key}", $val , PDO::PARAM_STR);
+					unset( $val );
+				}
+			}
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate ){
+				$ret_array['ret']	=	0;
+				$ret_array['msg']	=	'修改成功！';
+				AppDepartment::clearDepartmentMemcache();
+				break;
+			}
+			$ret_array['msg']		=	'修改失败，请稍候再试！';
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_AppDepartment_updateDepartmentInfo.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 检查部门名称是否已经存在了
+	 */
+	public static function checkDepartmentName( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_AppDepartment_checkDepartmentName' );
+		do{
+			$department_name	=	isset( $params['department_name'] ) ? $params['department_name'] : '';
+			$status				=	0;
+			if( empty( $department_name ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'新增'.APP_DEPARTMENT_NAME.'失败！必要参数缺失';
+				break;
+			}
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$where		=	' where department_name=:department_name and status=:status  ';
+			$sql		=	"select id from ".self::$departmentTableName." {$where}";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":department_name", $department_name, PDO::PARAM_STR);
+			$command->bindParam(":status", $status, PDO::PARAM_INT);
+			$resDate	=	$command->queryAll();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_AppDepartment_checkDepartmentName.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+}

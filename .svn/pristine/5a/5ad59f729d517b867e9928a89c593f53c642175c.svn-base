@@ -1,0 +1,56 @@
+<?php
+/**
+ * 非外部调用的用户信息公用类
+ * 需要记录用户缓存信息
+ * @author kk
+ * @since 2017-09-06
+ *
+ */
+class UserCommon {
+	public static $userInfo_key			=	'UserCommon_UserInfo' ;//用户基本信息缓存前缀
+	public static $userInfoTableName    =   'app_user_info';
+	/**
+	 *  根据用户id,获取用户基本信息
+	 */
+	public static function getUserInfoById( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_getUserInfoById' );
+		do{
+			$id		=	isset( $params['id'] ) ? $params['id'] : '';
+			$canmc	=	isset( $params['canmc'] ) ? $params['canmc'] : true;
+			$mc_key	=	self::$userInfo_key . $id;
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'获取用户信息失败！';
+				break;
+			}
+			if( $canmc ){
+				$resData			=	CfgAR::getMc( array( 'link'=>'memcache' , 'key'=>$mc_key ) );
+				if( $resData ){
+					$ret_array['ret']	=	0;
+					$ret_array['data']	=	$resData;
+					break;
+				}
+			}
+			$connection	=	CfgAR::setDbLink( 'wxdb' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"select * from ".self::$userInfoTableName." WHERE id=:id LIMIT 1";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id, PDO::PARAM_STR);
+			$resDate	=	$command->queryRow();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+			if( !empty($resDate) ){
+				CfgAR::setMc( array( 'link'=>'memcache' ,'key'=>$mc_key ,'data'=>$resDate ) );
+			}
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_getUserInfoById.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+}

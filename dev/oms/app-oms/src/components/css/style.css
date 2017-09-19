@@ -1,0 +1,10 @@
+/* ant样式重置 */
+.oms-login-form .login-form {
+    max-width: 300px;
+}
+.oms-login-form .login-form-forgot {
+    float: right;
+}
+.oms-login-form .login-form-button {
+    width: 100%;
+}

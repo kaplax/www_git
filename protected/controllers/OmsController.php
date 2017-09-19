@@ -1,0 +1,56 @@
+<?php
+/**
+ * 在线会议管理系统
+ * 
+ *
+ */
+class OmsController extends Controller
+{
+    /**
+     * login in
+     */
+    public function actionOmsIndex () {
+        $ret_array  =   array( 'ret' => -1 , 'msg' => '' , 'data' => null );
+        do {
+            
+        } while ( 0 );
+        $this->layout   =  '//layouts/column3';
+        $this->render( 'index' , $ret_array );
+    }
+    public function actionOmsLogin () {
+        header('Access-Control-Allow-Origin:*');
+        $ret_array  =   array( 'ret' => -1 , 'msg' => '' , 'data' => null );
+        do {
+            if( isset( $_POST ) && !empty( $_POST ) ){
+                $user   =   strval( trim( $_POST['username'] ) );
+                $pwd    =   strval( trim( $_POST['password'] ) );
+                if( empty( $user ) ){
+                    $ret_array['ret']   =   1;
+                    $ret_array['msg']   =   '用户名不能为空';
+                    break;
+                }
+                if( empty( $pwd ) ){
+                    $ret_array['ret']   =   2;
+                    $ret_array['msg']   =   '密码不能为空';
+                }
+                $resData    =   User::userLogin( array( 'name'=>$user,'password'=>$pwd ) );
+                if( 0!=$resData || !isset( $resData['data'] ) || !isset( $resData['data']['id'] ) ){
+                    $ret_array  =   $resData;
+                    $ret_array['msg']   =   'success';
+                    break;
+                }
+                if( !isset( $resData['data']['status'] ) || 0!=$resData['data']['status'] ){
+                    $ret_array['ret']  =   3;
+                    $ret_array['msg']  =    '您的账户被禁止登录，请联系管理员！';
+                    Yii::app()->user->logout();
+                    break;
+                }
+            }else{
+                $ret_array['msg']   =   '用户名或密码不能为空';
+            }
+        } while ( 0 );
+        
+        echo json_encode( $ret_array );
+    }
+    
+}

@@ -1,0 +1,390 @@
+<?php
+/**
+ * 非外部调用的用户信息公用类
+ * 需要记录用户缓存信息
+ * @author kk
+ * @since 2017-09-06
+ *
+ */
+class UserCommon {
+	public static $userInfo_key			=	'UserCommon_UserInfo' ;//用户基本信息缓存前缀
+	public static $userInfoTableName    =   'app_user_info';
+	public static $userCodeTableName    =   'app_user_code';
+	/**
+	 * 清空部门缓存信息
+	 */
+	public static function clearDepartmentMemcache( $params =array() )
+	{
+		do{
+			$canmcArr	=	array();
+			if( isset( $params['id'] ) ){//删除用户基本信息
+				$canmcArr[]	=	self::$userInfo_key . $params['id'];
+			}
+			foreach( $canmcArr as $key =>$val){
+				CfgAR::delMc( array( 'link'=>'memcache' , 'key'=>$val ) );
+			}
+		}while(0);
+	}
+	/**
+	 *  根据用户id,获取用户基本信息
+	 */
+	public static function getUserInfoById( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_getUserInfoById' );
+		do{
+			$id		=	isset( $params['id'] ) ? $params['id'] : '';
+			$canmc	=	isset( $params['canmc'] ) ? $params['canmc'] : true;
+			$mc_key	=	self::$userInfo_key . $id;
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'获取用户信息失败！';
+				break;
+			}
+			if( $canmc ){
+				$resData			=	CfgAR::getMc( array( 'link'=>'memcache' , 'key'=>$mc_key ) );
+				if( $resData ){
+					$ret_array['ret']	=	0;
+					$ret_array['data']	=	$resData;
+					break;
+				}
+			}
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"select * from ".self::$userInfoTableName." WHERE id=:id LIMIT 1";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id, PDO::PARAM_STR);
+			$resDate	=	$command->queryRow();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+			if( !empty($resDate) ){
+				CfgAR::setMc( array( 'link'=>'memcache' ,'key'=>$mc_key ,'data'=>$resDate ) );
+			}
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_getUserInfoById.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 修改用户信息
+	 */
+	public static function updateUserInfo( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_updateUserPassword' );
+		do{
+			$id			=	isset( $params['id'] ) ? $params['id'] : '';
+			$remark		=	isset( $params['remark'] ) ? $params['remark'] : '|'.date('Y-m-d H:i:s') .'修改内容';
+			$lasttime	=	date( 'Y-m-d H:i:s' );
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'修改密码失败！';
+				break;
+			}
+			$connection				=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	2;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	'UPDATE ' . self::$userInfoTableName . ' SET ';
+			foreach( $params as $key =>$val ){
+				if( 'id'!=$key && 'id'!=$key && 'remark'!=$key ){
+					$sql	.=	" {$key}=:{$key},";
+				}
+			}
+			$sql		.=	" lasttime=:lasttime and remark=CONCAT(remark,:remark)";
+			$sql		.=	' WHERE id=:id';
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id , PDO::PARAM_INT);
+			foreach( $params as $key =>$val ){
+				if( 'id'!=$key && 'id'!=$key && 'remark'!=$key ){
+					$command->bindParam(":{$key}", $val , PDO::PARAM_STR);
+					unset( $val );
+				}
+			}
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate ){
+				$ret_array['ret']	=	0;
+				$ret_array['msg']	=	'修改成功！';
+				UserCommon::clearDepartmentMemcache( array( 'id'=>$id ) );
+				break;
+			}
+			$ret_array['msg']		=	'修改失败，请稍候再试！';
+			
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_updateUserPassword.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 检查用户名是否存在
+	 * 
+	 */
+	public static function checkUserName( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_checkUserName' );
+		do{
+			$name		=	isset( $params['name'] ) ? $params['name'] : '';
+			if( empty( $name ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'获取用户信息失败！';
+				break;
+			}
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"select id from ".self::$userInfoTableName." WHERE name=:name LIMIT 1";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":name", $name, PDO::PARAM_STR);
+			$resDate	=	$command->queryRow();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_checkUserName.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 检查邀请码是否有效
+	 */
+	public static function createCode( $params=array() )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_createCode' );
+		$run		=	0;
+		do{
+			$run++;
+			$code		=	mt_rand( 10, 99) . mt_rand( 0, 9). mt_rand( 0, 9) . mt_rand( 0, 9). mt_rand( 0, 9);
+			$connection	=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"select id from ".self::$userCodeTableName." WHERE PIN=:PIN LIMIT 1";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":PIN", $code, PDO::PARAM_STR);
+			$resDate	=	$command->queryRow();
+			if( empty( $resDate ) ){
+				$ret_array['ret']	=	0;
+				$ret_array['data']	=	$code;
+				break;
+			}
+			$ret_array['msg']		=	'生成'. REG_CODE_NAME .'失败！';
+			if( $run >20 ){//最多执行20次
+				break;
+			}
+		}while(1);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_createCode.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 使用对应的code
+	 */
+	public static function useUserCode( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_useUserCode' );
+		do{
+			$id		=	isset( $params['id'] ) ? $params['id'] : '';
+			$utime	=	$lasttime	=	date( 'Y-m-d H:i:s' );
+			$status	=	1;
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'使用'.REG_CODE_NAME .'失败';
+				break;
+			}
+			$connection					=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"UPDATE ". self::$userCodeTableName ." SET status=:status,utime=:utime,lasttime=:lasttime WHERE id=:id";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id , PDO::PARAM_INT);
+			$command->bindParam(":status", $status , PDO::PARAM_INT);
+			$command->bindParam(":utime", $utime , PDO::PARAM_STR);
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate )
+			{
+				$ret_array['ret']		=	0;
+				break;
+			}
+			$ret_array['ret']			=	4;
+			$ret_array['msg']			=	'修改失败！';
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_useUserCode.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 生成对应的code信息
+	 */
+	public static function createUserCode( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_createUserCode' );
+		do{
+			$uname	=	isset( $params['uname'] ) ? $params['uname'] : '';
+			$phone	=	isset( $params['phone'] ) ? $params['phone'] : '';
+			$department_id	=	isset( $params['department_id'] ) ? $params['department_id'] : '';
+			$employee_id	=	isset( $params['employee_id'] ) ? $params['employee_id'] : '';
+			$sex			=	isset( $params['sex'] ) ? $params['sex'] : '';
+			$status			=	0;
+			$stime			=	date( 'Y-m-d H:i:s' );
+			$utime			=	isset( $params['utime'] ) ? $params['utime'] : '';
+			$creator		=	isset( $params['creator'] ) ? $params['creator'] : '';
+			$lasttime		=	date( 'Y-m-d H:i:s' );
+			$remark			=	'新增';
+			if( empty( $uname ) || empty( $creator ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'生成'.REG_CODE_NAME.'失败';
+				break;
+			}
+			$resData		=	UserCommon::checkUserName( array( 'name'=>$uname ) );
+			if( 0!=$resData['ret'] ){
+				$ret_array	=	$resData;
+				break;
+			}
+			if( !empty( $resData['data'] ) ){
+				$ret_array['ret']	=	2;
+				$ret_array['msg']	=	'生成'.REG_CODE_NAME.'失败,用户名已经存在！';
+				break;
+			}
+			$resData		=	UserCommon::createCode();
+			if( 0!=$resData['ret'] ){
+				$ret_array	=	$resData;
+				break;
+			}
+			$code			=	$resData['data'];//生成的随机邀请码
+			$connection					=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+				
+			$sql		=	"INSERT INTO ". self::$userCodeTableName ." (username,phone,employee_id,department_id,sex,PIN,status,stime,utime,creator,lasttime,remark) VALUES(:username,:phone,:employee_id,:department_id,:sex,:PIN,:status,:stime,:utime,:creator,:lasttime,:remark)";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":username", $uname , PDO::PARAM_INT);
+			$command->bindParam(":phone", $phone , PDO::PARAM_STR);
+			$command->bindParam(":employee_id", $employee_id , PDO::PARAM_STR);
+			$command->bindParam(":department_id", $department_id , PDO::PARAM_INT);
+			$command->bindParam(":sex", $sex , PDO::PARAM_INT);
+			$command->bindParam(":PIN", $code , PDO::PARAM_STR);
+			$command->bindParam(":status", $status , PDO::PARAM_INT);
+			$command->bindParam(":stime", $stime , PDO::PARAM_STR);
+			$command->bindParam(":utime", $utime , PDO::PARAM_STR);
+			$command->bindParam(":creator", $creator , PDO::PARAM_STR);
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate )
+			{
+				$ret_array['ret']		=	0;
+				$ret_array['data']		=	$connection->getLastInsertID();
+				break;
+			}
+			$ret_array['ret']			=	4;
+			$ret_array['msg']			=	'新增'.REG_CODE_NAME.'失败！记录数据失败！';
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_createUserCode.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 新增用户信息
+	 * username,
+	 * department_id,
+	 * employee_id,
+	 * phone,
+	 * occupation_id,
+	 * sex,
+	 * birth,
+	 * e_mail,
+	 * password,
+	 * stime,
+	 * status,
+	 * grade,
+	 * lasttime,
+	 * remark,
+	 * ability
+	 * 
+	 */
+	public static function addUserInfo( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_addUserInfo' );
+		do{
+			$username		=	isset( $params['username'] ) ? $params['username'] : '';
+			$department_id	=	isset( $params['department_id'] ) ? $params['department_id'] : '';
+			$employee_id	=	isset( $params['employee_id'] ) ? $params['employee_id'] : '';
+			$phone			=	isset( $params['phone'] ) ? $params['phone'] : '';
+			$occupation_id	=	isset( $params['occupation_id'] ) ? $params['occupation_id'] : '';
+			$ability	=	isset( $params['ability'] ) ? $params['ability'] : '';//技能数组
+			$sex		=	isset( $params['sex'] ) ? $params['sex'] : '';
+			$birth		=	isset( $params['birth'] ) ? $params['birth'] : '';
+			$e_mail		=	isset( $params['e_mail'] ) ? $params['e_mail'] : '';
+			$password	=	isset( $params['password'] ) ? md5($params['password']) : md5( APP_DEFINE_PASSWORD ) ;
+			$stime		=	isset( $params['stime'] ) ? $params['stime'] : date('Y-m-d H:i:s');
+			$status		=	isset( $params['status'] ) ? $params['status'] : 0;
+			$grade		=	isset( $params['grade'] ) ? $params['grade'] : 0;
+			$lasttime	=	date('Y-m-d H:i:s');
+			$remark		=	'新增信息';
+			if( empty( $username ) || empty( $occupation_id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'新增用户信息失败';
+				break;
+			}
+			$connection					=	CfgAR::setDbLink( 'db' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"INSERT INTO ". self::$userInfoTableName ." (username,department_id,employee_id,phone,occupation_id,sex,birth,e_mail,password,stime,status,grade,lasttime,remark) VALUES(:username,:department_id,:employee_id,:phone,:occupation_id,:sex,:birth,:e_mail,:password,:stime,:status,:grade,:lasttime,:remark)";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":username", $username , PDO::PARAM_INT);
+			$command->bindParam(":department_id", $department_id , PDO::PARAM_STR);
+			$command->bindParam(":employee_id", $employee_id , PDO::PARAM_STR);
+			$command->bindParam(":phone", $phone , PDO::PARAM_STR);
+			$command->bindParam(":occupation_id", $occupation_id , PDO::PARAM_STR);
+			$command->bindParam(":sex", $sex , PDO::PARAM_STR);
+			$command->bindParam(":birth", $birth , PDO::PARAM_STR);
+			$command->bindParam(":e_mail", $e_mail , PDO::PARAM_STR);
+			$command->bindParam(":password", $password , PDO::PARAM_STR);
+			$command->bindParam(":stime", stime , PDO::PARAM_STR);
+			$command->bindParam(":status", $status , PDO::PARAM_STR);
+			$command->bindParam(":grade", $grade , PDO::PARAM_STR);
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate )
+			{
+				$ret_array['ret']		=	0;
+				$ret_array['data']		=	$connection->getLastInsertID();
+				AppOccupation::updateAbilityInfo( array( 'uid'=>$ret_array['data'] ,'ability'=>$ability ) );
+				break;
+			}
+			$ret_array['ret']		=	2;
+			$ret_array['msg']		=	'新增失败';
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_addUserInfo.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+}

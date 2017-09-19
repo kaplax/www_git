@@ -1,0 +1,125 @@
+<?php
+/**
+ * 非外部调用的用户信息公用类
+ * 需要记录用户缓存信息
+ * @author kk
+ * @since 2017-09-06
+ *
+ */
+class UserCommon {
+	public static $userInfo_key			=	'UserCommon_UserInfo' ;//用户基本信息缓存前缀
+	public static $userInfoTableName    =   'app_user_info';
+	/**
+	 * 清空部门缓存信息
+	 */
+	public static function clearDepartmentMemcache( $params =array() )
+	{
+		do{
+			$canmcArr	=	array();
+			if( isset( $params['id'] ) ){//删除用户基本信息
+				$canmcArr[]	=	self::$userInfo_key . $params['id'];
+			}
+			foreach( $canmcArr as $key =>$val){
+				CfgAR::delMc( array( 'link'=>'memcache' , 'key'=>$val ) );
+			}
+		}while(0);
+	}
+	/**
+	 *  根据用户id,获取用户基本信息
+	 */
+	public static function getUserInfoById( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_getUserInfoById' );
+		do{
+			$id		=	isset( $params['id'] ) ? $params['id'] : '';
+			$canmc	=	isset( $params['canmc'] ) ? $params['canmc'] : true;
+			$mc_key	=	self::$userInfo_key . $id;
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'获取用户信息失败！';
+				break;
+			}
+			if( $canmc ){
+				$resData			=	CfgAR::getMc( array( 'link'=>'memcache' , 'key'=>$mc_key ) );
+				if( $resData ){
+					$ret_array['ret']	=	0;
+					$ret_array['data']	=	$resData;
+					break;
+				}
+			}
+			$connection	=	CfgAR::setDbLink( 'wxdb' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	3;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	"select * from ".self::$userInfoTableName." WHERE id=:id LIMIT 1";
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id, PDO::PARAM_STR);
+			$resDate	=	$command->queryRow();
+			$ret_array['ret']		=	0;
+			$ret_array['data']		=	$resDate;
+			if( !empty($resDate) ){
+				CfgAR::setMc( array( 'link'=>'memcache' ,'key'=>$mc_key ,'data'=>$resDate ) );
+			}
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_getUserInfoById.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+	/**
+	 * 修改用户信息
+	 */
+	public static function updateUserInfo( $params )
+	{
+		$ret_array	=	array( 'ret'=>-1 ,'msg'=>null ,'data'=>null ,'occur'=>'M_UserCommon_updateUserPassword' );
+		do{
+			$id			=	isset( $params['id'] ) ? $params['id'] : '';
+			$remark		=	isset( $params['remark'] ) ? $params['remark'] : '|'.date('Y-m-d H:i:s') .'修改内容';
+			$lasttime	=	date( 'Y-m-d H:i:s' );
+			if( empty( $id ) ){
+				$ret_array['ret']	=	1;
+				$ret_array['msg']	=	'修改密码失败！';
+				break;
+			}
+			$connection				=	CfgAR::setDbLink( 'wxgdb' );
+			if( '-3306'==$connection ){
+				$ret_array['ret']	=	2;
+				$ret_array['msg']	=	'服务器异常，请稍后再试！';
+				break;
+			}
+			$sql		=	'UPDATE ' . self::$userInfoTableName . ' SET ';
+			foreach( $params as $key =>$val ){
+				if( 'id'!=$key && 'id'!=$key && 'remark'!=$key ){
+					$sql	.=	" {$key}=:{$key},";
+				}
+			}
+			$sql		.=	" lasttime=:lasttime and remark=CONCAT(remark,:remark)";
+			$sql		.=	' WHERE id=:id';
+			$command	=	$connection->createCommand($sql);
+			$command->bindParam(":id", $id , PDO::PARAM_INT);
+			foreach( $params as $key =>$val ){
+				if( 'id'!=$key && 'id'!=$key && 'remark'!=$key ){
+					$command->bindParam(":{$key}", $val , PDO::PARAM_STR);
+					unset( $val );
+				}
+			}
+			$command->bindParam(":lasttime", $lasttime , PDO::PARAM_STR);
+			$command->bindParam(":remark", $remark , PDO::PARAM_STR);
+			$resDate	=	$command->execute();
+			if( $resDate ){
+				$ret_array['ret']	=	0;
+				$ret_array['msg']	=	'修改成功！';
+				UserCommon::clearDepartmentMemcache( array( 'id'=>$id ) );
+				break;
+			}
+			$ret_array['msg']		=	'修改失败，请稍候再试！';
+			
+		}while(0);
+		if( 0!=$ret_array['ret'] ){
+			Common::toTxt( array('file'=>'Log_M_UserCommon_updateUserPassword.txt', 'txt'=>'input:'. var_export( $params ,true ) .'| outPut:'.var_export( $ret_array, true) ) );
+		}
+		return $ret_array;
+	}
+}

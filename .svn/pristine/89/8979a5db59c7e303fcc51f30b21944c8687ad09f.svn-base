@@ -1,0 +1,58 @@
+1、
+* 用户注册信息认证
+* 调用方法： user::checkUserRegInfo($params)
+
+2、
+* 用户登录接口
+* 调用方法 User::login($params)
+
+3、
+* 获取对应的用户部门
+* 调用方法 User::getUserDepartment($params)
+
+4、
+* 新增部门信息
+* 调用方法 User::addDepartmentInfo($params)
+
+5、
+* 修改对应的部门信息
+* 调用方法 User::updateDepartmentInfo($params)
+
+6、
+* 修改用户密码（用户操作）
+* 调用方法 User::updateUserPassword($params)
+
+7、
+* 管理员重置用户密码
+* 调用方法 User::setUserPassword($params)
+
+完成时间：2017-09-06
+
+8、
+* 生成对应的识别码
+* 调用方法 User::createCode($params)
+
+9、
+* 获取岗位列表信息
+* 调用方法 User::getOccupationList($params)
+
+10、
+* 获取岗位信息职能列表
+* 调用方法 User::getOccupationAbility($params)
+
+11、
+* 保存个人信息，用于第一次注册
+* User::saveUserInfo( $params )
+
+12、
+* 修改用户基本信息
+* User::updateUserInfo($params)
+
+13、
+* 获取个人岗位职责信息
+* User::getUserAbility( $params )
+
+14、
+* 管理员删除用户 
+*  调用方法 User::delUserInfo($params)
+
